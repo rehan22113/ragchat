@@ -404,9 +404,27 @@
   const input         = document.getElementById("question-input");
   const sendBtn       = document.getElementById("send-btn");
 
-  // { sessionId → { fileName, pages, chunks, summary, messages: [] } }
+  // { sessionId → { fileName, pages, chunks, summary } }
   const store = {};
   let activeSessionId = null;
+
+  // ── Load sessions from DB on page load ─────────────────────────
+  async function init() {
+    const res = await fetch("/sessions");
+    const sessions = await res.json();
+    sessions.forEach(s => {
+      store[s.id] = {
+        fileName: s.file_name,
+        pages: s.pages,
+        chunks: s.chunks,
+        summary: s.summary,
+      };
+      addSessionTab(s.id);
+    });
+    if (sessions.length > 0) switchSession(sessions[sessions.length - 1].id);
+  }
+
+  init();
 
   // ── Upload ──────────────────────────────────────────────────────
   uploadBtn.addEventListener("click", () => fileInput.click());
@@ -426,11 +444,10 @@
       if (!res.ok) throw new Error(data.error);
 
       store[data.sessionId] = {
-        fileName: data.fileName,
+        fileName: file.name,
         pages: data.pages,
         chunks: data.chunks,
         summary: data.summary,
-        messages: [],
       };
 
       addSessionTab(data.sessionId);
@@ -478,7 +495,7 @@
     sessionsList.appendChild(tab);
   }
 
-  function switchSession(sessionId) {
+  async function switchSession(sessionId) {
     activeSessionId = sessionId;
     const s = store[sessionId];
 
@@ -496,18 +513,18 @@
       </div>
     `;
 
-    // Restore messages
+    // Load messages from DB
     messagesEl.innerHTML = "";
-    emptyState.style.display = "none";
+    const msgRes = await fetch(`/sessions/${sessionId}/messages`);
+    const msgs = await msgRes.json();
 
-    if (s.messages.length === 0) {
+    if (msgs.length === 0) {
       const es = document.createElement("div");
       es.className = "empty-state";
-      es.id = "empty-state-inner";
       es.innerHTML = `<div class="big">💬</div><p>Ask anything about <strong>${s.fileName}</strong></p>`;
       messagesEl.appendChild(es);
     } else {
-      s.messages.forEach(m => renderMessage(m.role, m.content));
+      msgs.forEach(m => renderMessage(m.role, m.content));
     }
 
     input.disabled = false;
@@ -541,7 +558,6 @@
     const q = input.value.trim();
     if (!q || !activeSessionId) return;
 
-    const s = store[activeSessionId];
     input.value = "";
     input.disabled = true;
     sendBtn.disabled = true;
@@ -550,7 +566,6 @@
     const es = messagesEl.querySelector(".empty-state");
     if (es) es.remove();
 
-    s.messages.push({ role: "user", content: q });
     renderMessage("user", q);
 
     const aiBubble = renderMessage("ai", "");
@@ -566,7 +581,6 @@
         body: JSON.stringify({
           sessionId: activeSessionId,
           question: q,
-          history: s.messages.slice(-8),
         }),
       });
 
@@ -602,7 +616,6 @@
 
       cursor.remove();
       aiBubble.innerHTML = formatText(fullText);
-      s.messages.push({ role: "ai", content: stripThink(fullText) });
 
     } catch (err) {
       cursor.remove();
