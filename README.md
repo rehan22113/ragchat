@@ -41,7 +41,7 @@ ollama pull nomic-embed-text
 
 ### 2. Clone and install
 ```bash
-git clone https://github.com/YOUR_USERNAME/ragchat.git
+git clone https://github.com/rehan22113/ragchat.git
 cd ragchat
 npm install
 ```
