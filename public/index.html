@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Chat with PDF</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 16px 24px;
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  header h1 { font-size: 1.1rem; color: #f8fafc; }
+  header span { font-size: 0.8rem; color: #64748b; }
+
+  .layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 280px;
+    border-right: 1px solid #1e293b;
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .sidebar h2 { font-size: 0.85rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+
+  .drop-zone {
+    border: 2px dashed #334155;
+    border-radius: 12px;
+    padding: 32px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: #3b82f6;
+    background: #1e2a3a;
+  }
+
+  .drop-zone .icon { font-size: 2rem; margin-bottom: 8px; }
+  .drop-zone p { font-size: 0.82rem; color: #64748b; line-height: 1.6; }
+  .drop-zone strong { color: #94a3b8; }
+
+  #file-input { display: none; }
+
+  .status {
+    font-size: 0.8rem;
+    padding: 10px 14px;
+    border-radius: 8px;
+    display: none;
+  }
+
+  .status.loading { background: #1e2a3a; color: #60a5fa; display: block; }
+  .status.success { background: #0f301e; color: #34d399; display: block; }
+  .status.error   { background: #3a1010; color: #f87171; display: block; }
+
+  .pdf-info {
+    background: #161b27;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 0.8rem;
+    display: none;
+  }
+
+  .pdf-info .name { color: #e2e8f0; font-weight: 600; margin-bottom: 4px; word-break: break-all; }
+  .pdf-info .meta { color: #64748b; white-space: pre-wrap; line-height: 1.6; margin-top: 4px; }
+
+  /* ── Chat ── */
+  .chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+  .message { display: flex; gap: 12px; max-width: 800px; }
+  .message.user { flex-direction: row-reverse; align-self: flex-end; }
+
+  .avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+  }
+
+  .message.user .avatar  { background: #1e3a5f; }
+  .message.ai .avatar    { background: #1e293b; }
+
+  .bubble {
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 0.88rem;
+    line-height: 1.7;
+    max-width: 650px;
+  }
+
+  .message.user .bubble {
+    background: #1e3a5f;
+    color: #bfdbfe;
+    border-bottom-right-radius: 4px;
+  }
+
+  .message.ai .bubble {
+    background: #161b27;
+    border: 1px solid #1e293b;
+    color: #e2e8f0;
+    border-bottom-left-radius: 4px;
+    white-space: pre-wrap;
+  }
+
+  /* hide <think> blocks */
+  .think { color: #475569; font-size: 0.78rem; font-style: italic; border-left: 2px solid #334155; padding-left: 8px; margin-bottom: 8px; }
+
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: #475569;
+  }
+
+  .empty-state .big { font-size: 3rem; }
+  .empty-state p { font-size: 0.88rem; }
+
+  /* ── Input bar ── */
+  .input-bar {
+    padding: 16px 24px;
+    border-top: 1px solid #1e293b;
+    display: flex;
+    gap: 10px;
+  }
+
+  #question-input {
+    flex: 1;
+    background: #161b27;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  #question-input:focus { border-color: #3b82f6; }
+  #question-input::placeholder { color: #475569; }
+  #question-input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #send-btn {
+    background: #1d4ed8;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+  }
+
+  #send-btn:hover:not(:disabled) { background: #2563eb; }
+  #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .cursor {
+    display: inline-block;
+    width: 8px; height: 16px;
+    background: #60a5fa;
+    border-radius: 2px;
+    animation: blink 0.8s infinite;
+    vertical-align: middle;
+    margin-left: 2px;
+  }
+
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+  .typing {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #64748b;
+    font-size: 0.82rem;
+    font-style: italic;
+  }
+
+  .typing-dots {
+    display: flex;
+    gap: 4px;
+  }
+
+  .typing-dots span {
+    width: 6px; height: 6px;
+    background: #475569;
+    border-radius: 50%;
+    animation: bounce 1.2s infinite;
+  }
+
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes bounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+    40%           { transform: translateY(-6px); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span>📄</span>
+  <h1>Chat with PDF</h1>
+  <span>Powered by DeepSeek R1 + Ollama</span>
+</header>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <h2>Document</h2>
+
+    <div class="drop-zone" id="drop-zone">
+      <div class="icon">📂</div>
+      <p><strong>Click to upload</strong> or drag & drop</p>
+      <p>PDF files only</p>
+    </div>
+    <input type="file" id="file-input" accept=".pdf"/>
+
+    <div class="status" id="status"></div>
+    <div class="pdf-info" id="pdf-info">
+      <div class="name" id="pdf-name"></div>
+      <div class="meta" id="pdf-meta"></div>
+    </div>
+  </div>
+
+  <!-- Chat -->
+  <div class="chat">
+    <div class="messages" id="messages">
+      <div class="empty-state" id="empty-state">
+        <div class="big">💬</div>
+        <p>Upload a PDF to start chatting</p>
+      </div>
+    </div>
+
+    <div class="input-bar">
+      <input type="text" id="question-input" placeholder="Ask a question about your PDF..." disabled/>
+      <button id="send-btn" disabled>Send</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const dropZone    = document.getElementById("drop-zone");
+  const fileInput   = document.getElementById("file-input");
+  const status      = document.getElementById("status");
+  const pdfInfo     = document.getElementById("pdf-info");
+  const pdfName     = document.getElementById("pdf-name");
+  const pdfMeta     = document.getElementById("pdf-meta");
+  const messages    = document.getElementById("messages");
+  const emptyState  = document.getElementById("empty-state");
+  const input       = document.getElementById("question-input");
+  const sendBtn     = document.getElementById("send-btn");
+
+  // ── Upload ──────────────────────────────────────────────────
+  dropZone.addEventListener("click", () => fileInput.click());
+
+  dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+  dropZone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropZone.classList.remove("dragover");
+    const file = e.dataTransfer.files[0];
+    if (file?.type === "application/pdf") uploadFile(file);
+  });
+
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files[0]) uploadFile(fileInput.files[0]);
+  });
+
+  async function uploadFile(file) {
+    setStatus("loading", `⏳ Processing "${file.name}"...`);
+    pdfInfo.style.display = "none";
+
+    const formData = new FormData();
+    formData.append("pdf", file);
+
+    try {
+      const res = await fetch("/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      setStatus("success", `✅ Ready! ${data.pages} pages · ${data.chunks} chunks indexed`);
+      pdfName.textContent = file.name;
+      pdfMeta.textContent = `${data.pages} pages · ${data.chunks} chunks`;
+      if (data.summary) pdfMeta.textContent += `\n\n📋 ${data.summary}`;
+      pdfInfo.style.display = "block";
+
+      input.disabled = false;
+      sendBtn.disabled = false;
+      input.placeholder = "Ask a question about your PDF...";
+      emptyState.style.display = "none";
+    } catch (err) {
+      setStatus("error", `❌ Error: ${err.message}`);
+    }
+  }
+
+  function setStatus(type, msg) {
+    status.className = `status ${type}`;
+    status.textContent = msg;
+  }
+
+  // ── Chat ────────────────────────────────────────────────────
+  sendBtn.addEventListener("click", sendMessage);
+  input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) sendMessage(); });
+
+  async function sendMessage() {
+    const q = input.value.trim();
+    if (!q) return;
+
+    input.value = "";
+    input.disabled = true;
+    sendBtn.disabled = true;
+
+    addMessage("user", q);
+    const aiBubble = addMessage("ai", "");
+
+    // Show typing indicator immediately
+    aiBubble.innerHTML = `
+      <div class="typing">
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+        Thinking...
+      </div>`;
+
+    const cursor = document.createElement("span");
+    cursor.className = "cursor";
+
+    try {
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q }),
+      });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+      let isThinking = false;
+      let hasAnswer = false;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const lines = decoder.decode(value).split("\n");
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6);
+          if (data === "[DONE]") break;
+          try {
+            const { token } = JSON.parse(data);
+            fullText += token;
+
+            const inThink = fullText.includes("<think>") && !fullText.includes("</think>");
+            const doneThink = fullText.includes("</think>");
+
+            if (inThink && !isThinking) {
+              // Just entered thinking phase — keep typing indicator
+              isThinking = true;
+            }
+
+            if (doneThink || !fullText.includes("<think>")) {
+              // Thinking done or no thinking — show actual answer
+              if (!hasAnswer) {
+                hasAnswer = true;
+                aiBubble.innerHTML = "";
+                aiBubble.appendChild(cursor);
+              }
+              aiBubble.innerHTML = formatText(fullText);
+              aiBubble.appendChild(cursor);
+              messages.scrollTop = messages.scrollHeight;
+            }
+          } catch {}
+        }
+      }
+
+      cursor.remove();
+      aiBubble.innerHTML = formatText(fullText);
+    } catch (err) {
+      cursor.remove();
+      aiBubble.textContent = "Error: " + err.message;
+    }
+
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.focus();
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function addMessage(role, text) {
+    const msg = document.createElement("div");
+    msg.className = `message ${role}`;
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.textContent = role === "user" ? "🧑" : "🤖";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    if (text) bubble.innerHTML = formatText(text);
+
+    msg.appendChild(avatar);
+    msg.appendChild(bubble);
+    messages.appendChild(msg);
+    messages.scrollTop = messages.scrollHeight;
+    return bubble;
+  }
+
+  function formatText(text) {
+    // Render <think>...</think> as a subtle block
+    return text.replace(/<think>([\s\S]*?)<\/think>/g, (_, t) =>
+      `<div class="think">💭 ${t.trim()}</div>`
+    );
+  }
+</script>
+</body>
+</html>

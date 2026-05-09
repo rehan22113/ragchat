@@ -1,0 +1,21 @@
+LangChain is a framework for building applications powered by large language models (LLMs).
+It provides tools to connect LLMs with external data sources, APIs, and memory systems.
+
+Embeddings are numerical representations of text. They convert words and sentences into
+vectors — lists of numbers — that capture semantic meaning. Similar texts produce similar
+vectors, which allows computers to measure how related two pieces of text are.
+
+A vector database is a specialized database designed to store and search embeddings.
+Unlike traditional databases that match exact values, vector databases find the closest
+vectors using mathematical similarity. Popular options include Chroma, FAISS, and Pinecone.
+
+Retrieval-Augmented Generation (RAG) is a technique that improves LLM answers by first
+retrieving relevant documents from a knowledge base, then passing them to the LLM as context.
+This prevents hallucination because the LLM answers from real data, not just training memory.
+
+Chunking is the process of splitting large documents into smaller pieces before embedding.
+This is necessary because embedding models have a token limit and because smaller, focused
+chunks produce better search results than large blocks of text.
+
+Ollama is a tool that lets you run large language models locally on your own machine.
+It supports models like Llama, Mistral, DeepSeek, and Qwen. No internet or API key needed.
