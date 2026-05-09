@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
 import fs from "fs";
+import crypto from "crypto";
 import { OllamaEmbeddings, ChatOllama } from "@langchain/ollama";
 import { HNSWLib } from "@langchain/community/vectorstores/hnswlib";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
@@ -17,8 +18,8 @@ const upload = multer({ dest: "uploads/" });
 const embeddings = new OllamaEmbeddings({ model: "nomic-embed-text" });
 const llm = new ChatOllama({ model: "deepseek-r1:8b" });
 
-let vectorStore = null;
-let docSummary = "";   // short summary of what the PDF covers
+// sessionId → { vectorStore, docSummary, fileName, pages, chunks, createdAt }
+const sessions = new Map();
 
 // ── Upload + Index PDF ──────────────────────────────────────────
 app.post("/upload", upload.single("pdf"), async (req, res) => {
@@ -29,41 +30,78 @@ app.post("/upload", upload.single("pdf"), async (req, res) => {
     const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 150 });
     const chunks = await splitter.splitDocuments(docs);
 
-    if (fs.existsSync("./vector_store")) fs.rmSync("./vector_store", { recursive: true });
-    vectorStore = await HNSWLib.fromDocuments(chunks, embeddings);
-    await vectorStore.save("./vector_store");
+    const vectorStore = await HNSWLib.fromDocuments(chunks, embeddings);
 
-    // Build a short summary of the document so the AI can tell users what it knows
+    // Auto-summarize what the doc covers
     const sampleText = chunks.slice(0, 5).map(c => c.pageContent).join("\n");
     const summaryResult = await llm.invoke(
       `In 2 sentences, what topics does this document cover? Be specific.\n\n${sampleText}`
     );
-    docSummary = summaryResult.content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    const docSummary = summaryResult.content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 
-    res.json({ success: true, chunks: chunks.length, pages: docs.length, summary: docSummary });
+    const sessionId = crypto.randomUUID();
+    sessions.set(sessionId, {
+      vectorStore,
+      docSummary,
+      fileName: req.file.originalname,
+      pages: docs.length,
+      chunks: chunks.length,
+      createdAt: new Date().toISOString(),
+    });
+
+    res.json({ sessionId, fileName: req.file.originalname, pages: docs.length, chunks: chunks.length, summary: docSummary });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
+// ── List Sessions ───────────────────────────────────────────────
+app.get("/sessions", (req, res) => {
+  const list = Array.from(sessions.entries()).map(([id, s]) => ({
+    id,
+    fileName: s.fileName,
+    pages: s.pages,
+    chunks: s.chunks,
+    summary: s.docSummary,
+    createdAt: s.createdAt,
+  }));
+  res.json(list);
+});
+
+// ── Delete Session ──────────────────────────────────────────────
+app.delete("/sessions/:id", (req, res) => {
+  sessions.delete(req.params.id);
+  res.json({ success: true });
+});
+
 // ── Chat ────────────────────────────────────────────────────────
 app.post("/chat", async (req, res) => {
-  const { question } = req.body;
-  if (!vectorStore) return res.status(400).json({ error: "No PDF uploaded yet." });
+  const { sessionId, question, history = [] } = req.body;
+  const session = sessions.get(sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found." });
 
   try {
-    const retriever = vectorStore.asRetriever({ k: 3 });
+    const retriever = session.vectorStore.asRetriever({ k: 3 });
+
+    // Build conversation history string for context
+    const historyText = history.slice(-6).map(m =>
+      `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`
+    ).join("\n");
 
     const prompt = ChatPromptTemplate.fromTemplate(`
 You are a friendly and helpful AI assistant for a PDF document.
 
 RULES:
-1. If the question is a greeting or small talk (hi, hello, how are you, thanks, etc.) — respond naturally and warmly. You can mention you are here to help with the document.
-2. If the question is related to the document context — answer it clearly and accurately using ONLY the context.
-3. If the question is NOT related to the document context — do NOT say "I don't know". Instead say what you DO know: mention the document topics and invite the user to ask about those.
+1. If the question is a greeting or small talk — respond naturally and warmly.
+2. If the question relates to the document — answer using ONLY the context below.
+3. If the question is unrelated to the document — mention what the document covers and invite them to ask about it.
+4. Use the conversation history for context when answering follow-up questions.
 
 Document covers: {summary}
+
+Conversation history:
+{history}
 
 Context from document:
 {context}
@@ -79,7 +117,8 @@ Answer:`);
           return docs.map(d => d.pageContent).join("\n\n");
         },
         question: (input) => input.question,
-        summary: () => docSummary,
+        summary: () => session.docSummary,
+        history: () => historyText || "No previous conversation.",
       },
       prompt,
       llm,

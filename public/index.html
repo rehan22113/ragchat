@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Chat with PDF</title>
+<title>RAGChat</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -14,18 +14,21 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   header {
-    padding: 16px 24px;
+    padding: 14px 20px;
     border-bottom: 1px solid #1e293b;
     display: flex;
     align-items: center;
-    gap: 12px;
+    justify-content: space-between;
+    flex-shrink: 0;
   }
 
-  header h1 { font-size: 1.1rem; color: #f8fafc; }
-  header span { font-size: 0.8rem; color: #64748b; }
+  header .logo { display: flex; align-items: center; gap: 10px; }
+  header h1 { font-size: 1rem; font-weight: 700; color: #f8fafc; }
+  header span.tag { font-size: 0.72rem; color: #475569; background: #1e293b; padding: 2px 8px; border-radius: 20px; }
 
   .layout {
     display: flex;
@@ -35,60 +38,133 @@
 
   /* ── Sidebar ── */
   .sidebar {
-    width: 280px;
+    width: 260px;
     border-right: 1px solid #1e293b;
-    padding: 24px 16px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    flex-shrink: 0;
+    background: #0c0f18;
   }
 
-  .sidebar h2 { font-size: 0.85rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+  .sidebar-top {
+    padding: 14px 12px;
+    border-bottom: 1px solid #1e293b;
+  }
 
-  .drop-zone {
-    border: 2px dashed #334155;
-    border-radius: 12px;
-    padding: 32px 16px;
-    text-align: center;
+  .upload-btn {
+    width: 100%;
+    background: #1d4ed8;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 0.85rem;
     cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.2s;
   }
 
-  .drop-zone:hover, .drop-zone.dragover {
-    border-color: #3b82f6;
-    background: #1e2a3a;
-  }
+  .upload-btn:hover { background: #2563eb; }
 
-  .drop-zone .icon { font-size: 2rem; margin-bottom: 8px; }
-  .drop-zone p { font-size: 0.82rem; color: #64748b; line-height: 1.6; }
-  .drop-zone strong { color: #94a3b8; }
+  .upload-status {
+    margin-top: 10px;
+    font-size: 0.75rem;
+    padding: 8px 10px;
+    border-radius: 6px;
+    display: none;
+    line-height: 1.5;
+  }
+  .upload-status.loading { background: #1e2a3a; color: #60a5fa; display: block; }
+  .upload-status.error   { background: #3a1010; color: #f87171; display: block; }
 
   #file-input { display: none; }
 
-  .status {
-    font-size: 0.8rem;
-    padding: 10px 14px;
-    border-radius: 8px;
-    display: none;
+  .sessions-label {
+    padding: 12px 14px 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #475569;
   }
 
-  .status.loading { background: #1e2a3a; color: #60a5fa; display: block; }
-  .status.success { background: #0f301e; color: #34d399; display: block; }
-  .status.error   { background: #3a1010; color: #f87171; display: block; }
-
-  .pdf-info {
-    background: #161b27;
-    border: 1px solid #1e293b;
-    border-radius: 8px;
-    padding: 12px;
-    font-size: 0.8rem;
-    display: none;
+  .sessions-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px 12px;
   }
 
-  .pdf-info .name { color: #e2e8f0; font-weight: 600; margin-bottom: 4px; word-break: break-all; }
-  .pdf-info .meta { color: #64748b; white-space: pre-wrap; line-height: 1.6; margin-top: 4px; }
+  .sessions-list::-webkit-scrollbar { width: 3px; }
+  .sessions-list::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
 
-  /* ── Chat ── */
+  .session-tab {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    margin-bottom: 2px;
+    position: relative;
+    group: true;
+  }
+
+  .session-tab:hover { background: #161b27; }
+  .session-tab.active { background: #1e293b; }
+
+  .session-tab .tab-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .session-tab .tab-info { flex: 1; min-width: 0; }
+  .session-tab .tab-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #e2e8f0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .session-tab.active .tab-name { color: #60a5fa; }
+
+  .session-tab .tab-meta {
+    font-size: 0.7rem;
+    color: #475569;
+    margin-top: 2px;
+  }
+
+  .session-tab .tab-delete {
+    background: none;
+    border: none;
+    color: #475569;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 2px 4px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+
+  .session-tab:hover .tab-delete { opacity: 1; }
+  .session-tab .tab-delete:hover { color: #f87171; }
+
+  .no-sessions {
+    text-align: center;
+    color: #334155;
+    font-size: 0.8rem;
+    padding: 24px 12px;
+    line-height: 1.6;
+  }
+
+  /* ── Chat area ── */
   .chat {
     flex: 1;
     display: flex;
@@ -96,39 +172,59 @@
     overflow: hidden;
   }
 
+  .chat-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 49px;
+    flex-shrink: 0;
+  }
+
+  .chat-header .doc-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #e2e8f0;
+  }
+
+  .chat-header .doc-meta {
+    font-size: 0.75rem;
+    color: #475569;
+  }
+
   .messages {
     flex: 1;
     overflow-y: auto;
-    padding: 24px;
+    padding: 24px 20px;
     display: flex;
     flex-direction: column;
     gap: 20px;
   }
 
   .messages::-webkit-scrollbar { width: 4px; }
-  .messages::-webkit-scrollbar-track { background: transparent; }
-  .messages::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  .messages::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
 
-  .message { display: flex; gap: 12px; max-width: 800px; }
-  .message.user { flex-direction: row-reverse; align-self: flex-end; }
+  .message { display: flex; gap: 12px; }
+  .message.user { flex-direction: row-reverse; align-self: flex-end; max-width: 75%; }
+  .message.ai { max-width: 85%; }
 
   .avatar {
-    width: 32px; height: 32px;
+    width: 30px; height: 30px;
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     flex-shrink: 0;
   }
 
-  .message.user .avatar  { background: #1e3a5f; }
-  .message.ai .avatar    { background: #1e293b; }
+  .message.user .avatar { background: #1e3a5f; }
+  .message.ai .avatar   { background: #1e293b; }
 
   .bubble {
-    padding: 12px 16px;
+    padding: 11px 15px;
     border-radius: 12px;
-    font-size: 0.88rem;
+    font-size: 0.87rem;
     line-height: 1.7;
-    max-width: 650px;
   }
 
   .message.user .bubble {
@@ -145,64 +241,41 @@
     white-space: pre-wrap;
   }
 
-  /* hide <think> blocks */
-  .think { color: #475569; font-size: 0.78rem; font-style: italic; border-left: 2px solid #334155; padding-left: 8px; margin-bottom: 8px; }
-
-  .empty-state {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
+  .think {
     color: #475569;
+    font-size: 0.76rem;
+    font-style: italic;
+    border-left: 2px solid #1e293b;
+    padding-left: 8px;
+    margin-bottom: 8px;
   }
 
-  .empty-state .big { font-size: 3rem; }
-  .empty-state p { font-size: 0.88rem; }
-
-  /* ── Input bar ── */
-  .input-bar {
-    padding: 16px 24px;
-    border-top: 1px solid #1e293b;
+  .typing {
     display: flex;
-    gap: 10px;
+    align-items: center;
+    gap: 8px;
+    color: #64748b;
+    font-size: 0.82rem;
   }
 
-  #question-input {
-    flex: 1;
-    background: #161b27;
-    border: 1px solid #1e293b;
-    border-radius: 10px;
-    padding: 12px 16px;
-    color: #e2e8f0;
-    font-size: 0.9rem;
-    outline: none;
-    transition: border-color 0.2s;
+  .typing-dots { display: flex; gap: 4px; }
+  .typing-dots span {
+    width: 6px; height: 6px;
+    background: #475569;
+    border-radius: 50%;
+    animation: bounce 1.2s infinite;
   }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
 
-  #question-input:focus { border-color: #3b82f6; }
-  #question-input::placeholder { color: #475569; }
-  #question-input:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  #send-btn {
-    background: #1d4ed8;
-    color: white;
-    border: none;
-    border-radius: 10px;
-    padding: 12px 20px;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: background 0.2s;
-    white-space: nowrap;
+  @keyframes bounce {
+    0%,80%,100% { transform: translateY(0); opacity: 0.4; }
+    40%          { transform: translateY(-5px); opacity: 1; }
   }
-
-  #send-btn:hover:not(:disabled) { background: #2563eb; }
-  #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .cursor {
     display: inline-block;
-    width: 8px; height: 16px;
+    width: 7px; height: 14px;
     background: #60a5fa;
     border-radius: 2px;
     animation: blink 0.8s infinite;
@@ -212,112 +285,137 @@
 
   @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
 
-  .typing {
+  .empty-state {
+    flex: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 6px;
-    color: #64748b;
-    font-size: 0.82rem;
-    font-style: italic;
+    justify-content: center;
+    gap: 10px;
+    color: #334155;
   }
 
-  .typing-dots {
+  .empty-state .big { font-size: 2.5rem; }
+  .empty-state p { font-size: 0.85rem; }
+
+  /* ── Input bar ── */
+  .input-bar {
+    padding: 14px 20px;
+    border-top: 1px solid #1e293b;
     display: flex;
-    gap: 4px;
+    gap: 10px;
+    flex-shrink: 0;
   }
 
-  .typing-dots span {
-    width: 6px; height: 6px;
-    background: #475569;
-    border-radius: 50%;
-    animation: bounce 1.2s infinite;
+  #question-input {
+    flex: 1;
+    background: #161b27;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px 15px;
+    color: #e2e8f0;
+    font-size: 0.88rem;
+    outline: none;
+    transition: border-color 0.2s;
+    resize: none;
+    height: 44px;
+    font-family: inherit;
   }
 
-  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  #question-input:focus { border-color: #334155; }
+  #question-input::placeholder { color: #334155; }
+  #question-input:disabled { opacity: 0.3; cursor: not-allowed; }
 
-  @keyframes bounce {
-    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-    40%           { transform: translateY(-6px); opacity: 1; }
+  #send-btn {
+    background: #1d4ed8;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 0 18px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.2s;
   }
+
+  #send-btn:hover:not(:disabled) { background: #2563eb; }
+  #send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 </style>
 </head>
 <body>
 
 <header>
-  <span>📄</span>
-  <h1>Chat with PDF</h1>
-  <span>Powered by DeepSeek R1 + Ollama</span>
+  <div class="logo">
+    <span>📄</span>
+    <h1>RAGChat</h1>
+  </div>
+  <span class="tag">DeepSeek R1 · Ollama · Local</span>
 </header>
 
 <div class="layout">
 
   <!-- Sidebar -->
   <div class="sidebar">
-    <h2>Document</h2>
-
-    <div class="drop-zone" id="drop-zone">
-      <div class="icon">📂</div>
-      <p><strong>Click to upload</strong> or drag & drop</p>
-      <p>PDF files only</p>
+    <div class="sidebar-top">
+      <button class="upload-btn" id="upload-btn">
+        <span>＋</span> Upload PDF
+      </button>
+      <input type="file" id="file-input" accept=".pdf"/>
+      <div class="upload-status" id="upload-status"></div>
     </div>
-    <input type="file" id="file-input" accept=".pdf"/>
 
-    <div class="status" id="status"></div>
-    <div class="pdf-info" id="pdf-info">
-      <div class="name" id="pdf-name"></div>
-      <div class="meta" id="pdf-meta"></div>
+    <div class="sessions-label">Documents</div>
+    <div class="sessions-list" id="sessions-list">
+      <div class="no-sessions" id="no-sessions">No documents yet.<br/>Upload a PDF to start.</div>
     </div>
   </div>
 
   <!-- Chat -->
   <div class="chat">
+    <div class="chat-header" id="chat-header">
+      <div class="empty-state" style="flex-direction:row; gap:8px; color:#334155; font-size:0.85rem; padding:0;">
+        <span>Select a document from the sidebar</span>
+      </div>
+    </div>
+
     <div class="messages" id="messages">
       <div class="empty-state" id="empty-state">
         <div class="big">💬</div>
-        <p>Upload a PDF to start chatting</p>
+        <p>Upload a PDF and start chatting</p>
       </div>
     </div>
 
     <div class="input-bar">
-      <input type="text" id="question-input" placeholder="Ask a question about your PDF..." disabled/>
-      <button id="send-btn" disabled>Send</button>
+      <textarea id="question-input" placeholder="Ask a question..." disabled rows="1"></textarea>
+      <button id="send-btn" disabled>↑</button>
     </div>
   </div>
 
 </div>
 
 <script>
-  const dropZone    = document.getElementById("drop-zone");
-  const fileInput   = document.getElementById("file-input");
-  const status      = document.getElementById("status");
-  const pdfInfo     = document.getElementById("pdf-info");
-  const pdfName     = document.getElementById("pdf-name");
-  const pdfMeta     = document.getElementById("pdf-meta");
-  const messages    = document.getElementById("messages");
-  const emptyState  = document.getElementById("empty-state");
-  const input       = document.getElementById("question-input");
-  const sendBtn     = document.getElementById("send-btn");
+  const uploadBtn     = document.getElementById("upload-btn");
+  const fileInput     = document.getElementById("file-input");
+  const uploadStatus  = document.getElementById("upload-status");
+  const sessionsList  = document.getElementById("sessions-list");
+  const noSessions    = document.getElementById("no-sessions");
+  const chatHeader    = document.getElementById("chat-header");
+  const messagesEl    = document.getElementById("messages");
+  const emptyState    = document.getElementById("empty-state");
+  const input         = document.getElementById("question-input");
+  const sendBtn       = document.getElementById("send-btn");
 
-  // ── Upload ──────────────────────────────────────────────────
-  dropZone.addEventListener("click", () => fileInput.click());
+  // { sessionId → { fileName, pages, chunks, summary, messages: [] } }
+  const store = {};
+  let activeSessionId = null;
 
-  dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
-  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
-  dropZone.addEventListener("drop", e => {
-    e.preventDefault();
-    dropZone.classList.remove("dragover");
-    const file = e.dataTransfer.files[0];
-    if (file?.type === "application/pdf") uploadFile(file);
-  });
-
+  // ── Upload ──────────────────────────────────────────────────────
+  uploadBtn.addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => {
     if (fileInput.files[0]) uploadFile(fileInput.files[0]);
   });
 
   async function uploadFile(file) {
-    setStatus("loading", `⏳ Processing "${file.name}"...`);
-    pdfInfo.style.display = "none";
+    setUploadStatus("loading", `⏳ Indexing "${file.name}"...`);
 
     const formData = new FormData();
     formData.append("pdf", file);
@@ -327,47 +425,136 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      setStatus("success", `✅ Ready! ${data.pages} pages · ${data.chunks} chunks indexed`);
-      pdfName.textContent = file.name;
-      pdfMeta.textContent = `${data.pages} pages · ${data.chunks} chunks`;
-      if (data.summary) pdfMeta.textContent += `\n\n📋 ${data.summary}`;
-      pdfInfo.style.display = "block";
+      store[data.sessionId] = {
+        fileName: data.fileName,
+        pages: data.pages,
+        chunks: data.chunks,
+        summary: data.summary,
+        messages: [],
+      };
 
-      input.disabled = false;
-      sendBtn.disabled = false;
-      input.placeholder = "Ask a question about your PDF...";
-      emptyState.style.display = "none";
+      addSessionTab(data.sessionId);
+      switchSession(data.sessionId);
+      setUploadStatus("", "");
+      fileInput.value = "";
     } catch (err) {
-      setStatus("error", `❌ Error: ${err.message}`);
+      setUploadStatus("error", `❌ ${err.message}`);
     }
   }
 
-  function setStatus(type, msg) {
-    status.className = `status ${type}`;
-    status.textContent = msg;
+  function setUploadStatus(type, msg) {
+    uploadStatus.className = `upload-status ${type}`;
+    uploadStatus.textContent = msg;
+    uploadStatus.style.display = msg ? "block" : "none";
   }
 
-  // ── Chat ────────────────────────────────────────────────────
+  // ── Session Tabs ────────────────────────────────────────────────
+  function addSessionTab(sessionId) {
+    noSessions.style.display = "none";
+
+    const s = store[sessionId];
+    const tab = document.createElement("div");
+    tab.className = "session-tab";
+    tab.dataset.id = sessionId;
+    tab.innerHTML = `
+      <div class="tab-icon">📄</div>
+      <div class="tab-info">
+        <div class="tab-name" title="${s.fileName}">${s.fileName}</div>
+        <div class="tab-meta">${s.pages} pages · ${s.chunks} chunks</div>
+      </div>
+      <button class="tab-delete" title="Remove">✕</button>
+    `;
+
+    tab.addEventListener("click", (e) => {
+      if (e.target.classList.contains("tab-delete")) return;
+      switchSession(sessionId);
+    });
+
+    tab.querySelector(".tab-delete").addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteSession(sessionId, tab);
+    });
+
+    sessionsList.appendChild(tab);
+  }
+
+  function switchSession(sessionId) {
+    activeSessionId = sessionId;
+    const s = store[sessionId];
+
+    // Update active tab style
+    document.querySelectorAll(".session-tab").forEach(t => t.classList.remove("active"));
+    const tab = sessionsList.querySelector(`[data-id="${sessionId}"]`);
+    if (tab) tab.classList.add("active");
+
+    // Update chat header
+    chatHeader.innerHTML = `
+      <span style="font-size:1.1rem">📄</span>
+      <div>
+        <div class="doc-name">${s.fileName}</div>
+        <div class="doc-meta">${s.pages} pages · ${s.chunks} chunks · ${s.summary ? s.summary.slice(0, 80) + "..." : ""}</div>
+      </div>
+    `;
+
+    // Restore messages
+    messagesEl.innerHTML = "";
+    emptyState.style.display = "none";
+
+    if (s.messages.length === 0) {
+      const es = document.createElement("div");
+      es.className = "empty-state";
+      es.id = "empty-state-inner";
+      es.innerHTML = `<div class="big">💬</div><p>Ask anything about <strong>${s.fileName}</strong></p>`;
+      messagesEl.appendChild(es);
+    } else {
+      s.messages.forEach(m => renderMessage(m.role, m.content));
+    }
+
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.focus();
+  }
+
+  async function deleteSession(sessionId, tabEl) {
+    await fetch(`/sessions/${sessionId}`, { method: "DELETE" });
+    delete store[sessionId];
+    tabEl.remove();
+
+    if (activeSessionId === sessionId) {
+      activeSessionId = null;
+      chatHeader.innerHTML = `<span style="color:#334155;font-size:0.85rem">Select a document from the sidebar</span>`;
+      messagesEl.innerHTML = `<div class="empty-state" id="empty-state"><div class="big">💬</div><p>Upload a PDF and start chatting</p></div>`;
+      input.disabled = true;
+      sendBtn.disabled = true;
+    }
+
+    if (Object.keys(store).length === 0) noSessions.style.display = "block";
+  }
+
+  // ── Chat ────────────────────────────────────────────────────────
   sendBtn.addEventListener("click", sendMessage);
-  input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) sendMessage(); });
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
 
   async function sendMessage() {
     const q = input.value.trim();
-    if (!q) return;
+    if (!q || !activeSessionId) return;
 
+    const s = store[activeSessionId];
     input.value = "";
     input.disabled = true;
     sendBtn.disabled = true;
 
-    addMessage("user", q);
-    const aiBubble = addMessage("ai", "");
+    // Remove empty state if present
+    const es = messagesEl.querySelector(".empty-state");
+    if (es) es.remove();
 
-    // Show typing indicator immediately
-    aiBubble.innerHTML = `
-      <div class="typing">
-        <div class="typing-dots"><span></span><span></span><span></span></div>
-        Thinking...
-      </div>`;
+    s.messages.push({ role: "user", content: q });
+    renderMessage("user", q);
+
+    const aiBubble = renderMessage("ai", "");
+    aiBubble.innerHTML = `<div class="typing"><div class="typing-dots"><span></span><span></span><span></span></div>Thinking...</div>`;
 
     const cursor = document.createElement("span");
     cursor.className = "cursor";
@@ -376,21 +563,23 @@
       const res = await fetch("/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q }),
+        body: JSON.stringify({
+          sessionId: activeSessionId,
+          question: q,
+          history: s.messages.slice(-8),
+        }),
       });
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let fullText = "";
-      let isThinking = false;
       let hasAnswer = false;
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
-        const lines = decoder.decode(value).split("\n");
-        for (const line of lines) {
+        for (const line of decoder.decode(value).split("\n")) {
           if (!line.startsWith("data: ")) continue;
           const data = line.slice(6);
           if (data === "[DONE]") break;
@@ -398,24 +587,14 @@
             const { token } = JSON.parse(data);
             fullText += token;
 
-            const inThink = fullText.includes("<think>") && !fullText.includes("</think>");
-            const doneThink = fullText.includes("</think>");
+            const inThink  = fullText.includes("<think>") && !fullText.includes("</think>");
+            const doneThink = fullText.includes("</think>") || !fullText.includes("<think>");
 
-            if (inThink && !isThinking) {
-              // Just entered thinking phase — keep typing indicator
-              isThinking = true;
-            }
-
-            if (doneThink || !fullText.includes("<think>")) {
-              // Thinking done or no thinking — show actual answer
-              if (!hasAnswer) {
-                hasAnswer = true;
-                aiBubble.innerHTML = "";
-                aiBubble.appendChild(cursor);
-              }
+            if (doneThink) {
+              if (!hasAnswer) { hasAnswer = true; aiBubble.innerHTML = ""; aiBubble.appendChild(cursor); }
               aiBubble.innerHTML = formatText(fullText);
               aiBubble.appendChild(cursor);
-              messages.scrollTop = messages.scrollHeight;
+              messagesEl.scrollTop = messagesEl.scrollHeight;
             }
           } catch {}
         }
@@ -423,6 +602,8 @@
 
       cursor.remove();
       aiBubble.innerHTML = formatText(fullText);
+      s.messages.push({ role: "ai", content: stripThink(fullText) });
+
     } catch (err) {
       cursor.remove();
       aiBubble.textContent = "Error: " + err.message;
@@ -431,10 +612,10 @@
     input.disabled = false;
     sendBtn.disabled = false;
     input.focus();
-    messages.scrollTop = messages.scrollHeight;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  function addMessage(role, text) {
+  function renderMessage(role, text) {
     const msg = document.createElement("div");
     msg.className = `message ${role}`;
 
@@ -448,16 +629,19 @@
 
     msg.appendChild(avatar);
     msg.appendChild(bubble);
-    messages.appendChild(msg);
-    messages.scrollTop = messages.scrollHeight;
+    messagesEl.appendChild(msg);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
     return bubble;
   }
 
   function formatText(text) {
-    // Render <think>...</think> as a subtle block
     return text.replace(/<think>([\s\S]*?)<\/think>/g, (_, t) =>
       `<div class="think">💭 ${t.trim()}</div>`
     );
+  }
+
+  function stripThink(text) {
+    return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
   }
 </script>
 </body>
