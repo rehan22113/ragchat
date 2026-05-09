@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import multer from "multer";
 import fs from "fs";
@@ -20,7 +21,7 @@ const embeddings = new OllamaEmbeddings({ model: "nomic-embed-text" });
 const llm = new ChatOllama({ model: "deepseek-r1:8b" });
 
 // Postgres connection
-const db = new pg.Pool({ database: "ragchat" });
+const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 // In-memory vector stores (loaded from disk on startup)
 const vectorStores = new Map();
