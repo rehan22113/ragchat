@@ -4,6 +4,8 @@ A fully local "Chat with PDF" app built with **LangChain.js**, **Ollama**, and *
 
 ![RAGChat Demo](https://img.shields.io/badge/AI-DeepSeek_R1-blue) ![LangChain](https://img.shields.io/badge/LangChain-JS-green) ![Ollama](https://img.shields.io/badge/Ollama-local-orange)
 
+![RAGChat Screenshot](./Screenshot.png)
+
 ## How it works
 
 ```
